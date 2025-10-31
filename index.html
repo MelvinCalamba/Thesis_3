@@ -1,0 +1,2302 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Routing Algorithm Race - Disaster Mode</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Reset default margins and set full height */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      overflow: auto;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+
+    /* Main container using flexbox for full viewport */
+    .main-container {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      width: 100%;
+    }
+
+    /* Header section */
+    .header-section {
+      flex: 0 0 auto;
+      padding: 15px 20px;
+      background: white;
+      border-bottom: 1px solid #e5e7eb;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+
+    /* Content area - takes remaining space */
+    .content-area {
+      flex: 1 1 auto;
+      display: flex;
+      min-height: 600px;
+      height: calc(100vh - 200px);
+    }
+
+    /* Left panel - map container */
+    .map-panel {
+      flex: 1 1 70%;
+      min-width: 0;
+      position: relative;
+      height: 100%;
+    }
+
+    #map {
+      height: 100%;
+      width: 100%;
+    }
+
+    /* Right panel - results container */
+    .results-panel {
+      flex: 0 0 30%;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: #f8fafc;
+      border-left: 1px solid #e5e7eb;
+      height: 100%;
+    }
+
+    .results-header {
+      flex: 0 0 auto;
+      padding: 15px 20px;
+      background: #1e40af;
+      color: white;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .results-content {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 20px;
+      height: 100%;
+    }
+
+    /* Input controls section */
+    .controls-section {
+      background: white;
+      padding: 15px 20px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .controls-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      align-items: center;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .control-label {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    .control-input {
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 0.875rem;
+    }
+
+    .control-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    /* Disaster controls */
+    .disaster-controls {
+      background: white;
+      padding: 15px 20px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .disaster-buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .disaster-btn {
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .disaster-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
+    .disaster-btn.flood {
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      color: white;
+    }
+
+    .disaster-btn.fire {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: white;
+    }
+
+    .disaster-btn.earthquake {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: white;
+    }
+
+    .disaster-btn.reset {
+      background: linear-gradient(135deg, #6b7280, #4b5563);
+      color: white;
+    }
+
+    /* Blocking controls */
+    .blocking-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: #f3f4f6;
+      border-radius: 6px;
+    }
+
+    /* Toggle switch */
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #dc2626;
+      transition: .4s;
+      border-radius: 24px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+
+    input:checked + .toggle-slider {
+      background-color: #10b981;
+    }
+
+    input:checked + .toggle-slider:before {
+      transform: translateX(20px);
+    }
+
+    /* Action buttons */
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.875rem;
+    }
+
+    .btn-primary {
+      background: #10b981;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #059669;
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: #ef4444;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #dc2626;
+      transform: translateY(-1px);
+    }
+
+    /* EDA Section Styles */
+    #eda-section {
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .eda-stat-card {
+      background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+      border-left: 4px solid #8b5cf6;
+    }
+
+    .eda-stat-value {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #1e40af;
+    }
+
+    .eda-stat-label {
+      font-size: 0.875rem;
+      color: #64748b;
+      margin-top: 5px;
+    }
+
+    .eda-viz-card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 15px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .eda-viz-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .eda-viz-image {
+      width: 100%;
+      height: auto;
+      border-radius: 4px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* Legend and map controls */
+    .map-controls {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .legend {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      max-width: 250px;
+    }
+
+    .legend h4 {
+      margin: 0 0 10px 0;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      border-radius: 4px;
+      padding: 4px 8px;
+    }
+
+    .legend-item:hover {
+      background-color: #f3f4f6;
+    }
+
+    .legend-item.active {
+      background-color: #e0e7ff;
+    }
+
+    .legend-color {
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    /* Disaster info */
+    .disaster-info {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      border-left: 4px solid;
+      margin-top: 10px;
+    }
+
+    .disaster-info.flood {
+      border-color: #3b82f6;
+    }
+
+    .disaster-info.fire {
+      border-color: #ef4444;
+    }
+
+    .disaster-info.earthquake {
+      border-color: #f59e0b;
+    }
+
+    /* Results table */
+    .results-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    .results-table th {
+      background: #374151;
+      color: white;
+      padding: 10px;
+      text-align: left;
+      font-weight: 600;
+    }
+
+    .results-table td {
+      padding: 10px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .results-table tr:hover {
+      background-color: #f9fafb;
+    }
+
+    /* Race progress */
+    .race-algorithm {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .race-progress {
+      height: 20px;
+      background-color: #e5e7eb;
+      border-radius: 10px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+
+    .race-progress-bar {
+      height: 100%;
+      border-radius: 10px;
+      transition: width 0.3s ease;
+    }
+
+    /* Responsive design */
+    @media (max-width: 1024px) {
+      .content-area {
+        flex-direction: column;
+        height: auto;
+      }
+      
+      .map-panel {
+        flex: 1 1 500px;
+        min-height: 500px;
+      }
+      
+      .results-panel {
+        flex: 1 1 400px;
+        min-height: 400px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .controls-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .disaster-buttons {
+        flex-direction: column;
+      }
+      
+      .action-buttons {
+        flex-direction: column;
+      }
+      
+      .content-area {
+        flex-direction: column;
+        height: auto;
+      }
+      
+      .map-panel {
+        min-height: 400px;
+      }
+      
+      .results-panel {
+        min-height: 300px;
+      }
+    }
+
+    /* Custom scrollbar */
+    .results-content::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .results-content::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+
+    .results-content::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 3px;
+    }
+
+    .results-content::-webkit-scrollbar-thumb:hover {
+      background: #a8a8a8;
+    }
+
+    /* Road and path styling */
+    .road-line {
+      z-index: 5;
+    }
+    .path-line {
+      z-index: 15;
+    }
+    .start-icon, .end-icon {
+      z-index: 100;
+    }
+    .race-marker {
+      z-index: 200;
+      filter: drop-shadow(0 0 5px rgba(0,0,0,0.7));
+    }
+  </style>
+</head>
+<body class="overflow-auto">
+  <div class="main-container">
+    <!-- Header Section -->
+    <div class="header-section">
+      <h1 class="text-2xl font-bold text-gray-800">Pathfinding Algorithm Race - Disaster Mode</h1>
+      <p class="text-sm text-gray-600 mt-1">Fire Disaster: Limited to 2-3 blocked edges, end nodes remain reachable with delays</p>
+    </div>
+
+    <!-- Controls Section -->
+    <div class="controls-section">
+      <div class="controls-grid">
+        <!-- Start Node -->
+        <div class="control-group">
+          <label for="start_node" class="control-label">Start Node</label>
+          <input type="text" id="start_node" placeholder="(14.179543, 121.241683)" class="control-input" />
+        </div>
+        
+        <!-- End Node -->
+        <div class="control-group">
+          <label for="end_node" class="control-label">End Node</label>
+          <input type="text" id="end_node" placeholder="(14.153306, 121.248118)" class="control-input" />
+        </div>
+
+        <!-- Blocking Controls -->
+        <div class="blocking-controls">
+          <span class="control-label">Block Mode:</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="blocking-toggle" checked>
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="text-sm text-gray-600">
+            (<span id="blocked-count">0</span>/10)
+          </span>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button onclick="startRace()" class="btn btn-primary">
+            Start Race
+          </button>
+          <button onclick="resetAll()" class="btn btn-secondary">
+            Reset All
+          </button>
+          <!-- NEW: EDA Button -->
+          <button onclick="showEDA()" class="btn" style="background: #8b5cf6; color: white;">
+            📊 Show Data Analysis
+          </button>
+          <!-- In the controls-section, add this button to the action-buttons div -->
+          <button onclick="showAlgorithmMetrics()" class="btn" style="background: #dc2626; color: white;">
+              📈 Algorithm Metrics
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Algorithm Metrics Section -->
+    <div id="algorithm-metrics-section" class="hidden">
+      <div class="controls-section">
+        <div class="flex justify-between items-center">
+          <h3 class="font-semibold text-lg">Algorithm Performance Metrics</h3>
+          <button onclick="hideAlgorithmMetrics()" class="btn btn-secondary">
+            Close Metrics
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-white p-6">
+        <!-- Metrics Overview -->
+        <div id="metrics-statistics" class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <!-- Metrics will be populated here -->
+        </div>
+
+        <!-- Visualizations -->
+        <div id="metrics-visualizations" class="grid grid-cols-1 gap-6">
+          <!-- Visualizations will be populated here -->
+        </div>
+
+        <!-- Loading State -->
+        <div id="metrics-loading" class="text-center py-10">
+          <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-red-500 mx-auto mb-4"></div>
+          <p class="text-gray-600">Calculating algorithm performance metrics...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="metrics-error" class="hidden text-center py-10">
+          <div class="text-red-500 text-4xl mb-4">❌</div>
+          <p class="text-red-600 font-semibold">Error loading algorithm metrics</p>
+          <p class="text-gray-600 mt-2" id="metrics-error-message"></p>
+          <button onclick="loadAlgorithmMetrics()" class="btn btn-primary mt-4">
+            Try Again
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- EDA Visualizations Section -->
+    <div id="eda-section" class="hidden">
+      <div class="controls-section">
+        <div class="flex justify-between items-center">
+          <h3 class="font-semibold text-lg">Road Network Data Analysis</h3>
+          <button onclick="hideEDA()" class="btn btn-secondary">
+            Close Analysis
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-white p-6">
+        <!-- Statistics Overview -->
+        <div id="eda-statistics" class="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+          <!-- Statistics will be populated here -->
+        </div>
+
+        <!-- Visualizations Grid -->
+        <div id="eda-visualizations" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Visualizations will be populated here -->
+        </div>
+
+        <!-- Loading State -->
+        <div id="eda-loading" class="text-center py-10">
+          <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mx-auto mb-4"></div>
+          <p class="text-gray-600">Generating data analysis visualizations...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="eda-error" class="hidden text-center py-10">
+          <div class="text-red-500 text-4xl mb-4">❌</div>
+          <p class="text-red-600 font-semibold">Error loading data analysis</p>
+          <p class="text-gray-600 mt-2" id="eda-error-message"></p>
+          <button onclick="loadEDA()" class="btn btn-primary mt-4">
+            Try Again
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Disaster Controls -->
+    <div class="disaster-controls">
+      <h3 class="font-semibold text-lg mb-3">Disaster Simulation</h3>
+      <div class="disaster-buttons">
+        <button class="disaster-btn flood" onclick="simulateDisaster('flood')">
+          🌊 Simulate Flood
+        </button>
+        <button class="disaster-btn fire" onclick="simulateDisaster('fire')">
+          🔥 Simulate Fire (2-3 edges max)
+        </button>
+        <button class="disaster-btn earthquake" onclick="simulateDisaster('earthquake')">
+          🌍 Simulate Earthquake
+        </button>
+        <button class="disaster-btn reset" onclick="clearDisaster()">
+          🗑️ Clear Disaster
+        </button>
+      </div>
+      
+      <!-- Fire origin input (only shown for fire disaster) -->
+      <div id="fire-origin-container" class="hidden mt-3">
+        <div class="control-group" style="max-width: 300px;">
+          <label for="fire_origin" class="control-label">Fire Origin Node</label>
+          <input type="text" id="fire_origin" placeholder="(14.153439, 121.248028)" class="control-input" />
+        </div>
+        <div class="text-xs text-orange-600 mt-2">
+          ⚠️ Fire disaster will be limited to 2-3 blocked edges. End nodes remain reachable with 1-2 minute delays.
+        </div>
+      </div>
+      
+      <!-- Disaster info display -->
+      <div id="disaster-info" class="hidden"></div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="content-area">
+      <!-- Map Panel (70% width) -->
+      <div class="map-panel">
+        <div id="map"></div>
+        
+        <!-- Map Controls -->
+        <div class="map-controls">
+          <!-- Algorithm Legend -->
+          <div class="legend">
+            <h4>Pathfinding Algorithms</h4>
+            <div id="algorithm-legend">
+              <!-- Will be populated by JavaScript -->
+            </div>
+          </div>
+          
+          <!-- Disaster Legend -->
+          <div class="legend">
+            <h4>Disaster Effects</h4>
+            <div class="legend-item">
+              <div class="legend-color" style="background-color: #3b82f6;"></div>
+              <span class="text-sm">Flood (30 edges blocked)</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background-color: #ef4444;"></div>
+              <span class="text-sm">Fire Blocked (2-3 max)</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background-color: #f59e0b;"></div>
+              <span class="text-sm">Earthquake (40 edges blocked)</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background-color: #dc2626;"></div>
+              <span class="text-sm">Completely Blocked</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background-color: #10b981;"></div>
+              <span class="text-sm">End Node Access (1-2 min delay)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results Panel (30% width) -->
+      <div class="results-panel">
+        <div class="results-header">
+          <div class="flex justify-between items-center">
+            <span class="font-medium">Race Status:</span>
+            <span id="race-state" class="px-3 py-1 bg-white text-gray-800 rounded-full text-sm font-medium">Not Started</span>
+          </div>
+        </div>
+        <div class="results-content" id="results">
+          <!-- Results will be populated here -->
+          <div class="text-center text-gray-500 my-10">
+            <p class="mb-4">Set your start and end nodes, configure disasters, and click "Start Race" to begin</p>
+            <div class="text-sm text-gray-400">
+              <p>• Use Block Mode to manually block roads</p>
+              <p>• Fire disasters are limited to 2-3 blocked edges for containment</p>
+              <p>• End nodes remain reachable with 1-2 minute delays in fire disasters</p>
+              <p>• Compare performance across different pathfinding algorithms</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script>
+  let map;
+  let startMarker, endMarker;
+  let pathLayers = {};
+  let roadLayers = [];
+  let allRoads = [];
+  let blockedEdges = new Set();
+  let disasterEdges = new Set();
+  const MAX_BLOCKED = 10;
+  let isBlockingMode = true;
+  let raceMarkers = {};
+  let raceInterval;
+  let raceState = 'not_started';
+  
+  // Store all algorithm results
+  let allAlgorithmResults = {};
+  let currentSelectedAlgorithm = null;
+  
+  // Race simulation data
+  let raceData = {};
+  
+  // Current disaster info
+  let currentDisaster = null;
+  
+  // Algorithm colors
+  const algorithmColors = {
+    'Dijkstra': '#2563eb',
+    'A*': '#9333ea',
+    'Greedy BFS': '#16a34a',
+    'Ant Colony': '#92400e'
+  };
+
+  // Disaster colors
+  const disasterColors = {
+    'flood': '#3b82f6',
+    'fire': '#ef4444',
+    'earthquake': '#f59e0b',
+    'end_node_access': '#10b981'
+  };
+
+  // Initialize map
+  function initMap() {
+    map = L.map('map').setView([14.166, 121.245], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    // Setup blocking mode toggle
+    document.getElementById('blocking-toggle').addEventListener('change', function(e) {
+      isBlockingMode = e.target.checked;
+    });
+
+    loadRoadData();
+  }
+
+  // Initialize the algorithm legend
+  function initAlgorithmLegend() {
+    const legendContainer = document.getElementById('algorithm-legend');
+    
+    for (const algo in algorithmColors) {
+      const legendItem = document.createElement('div');
+      legendItem.className = 'legend-item';
+      legendItem.onclick = () => toggleAlgorithm(algo);
+      legendItem.id = `legend-${algo}`;
+      
+      legendItem.innerHTML = `
+        <div class="legend-color" style="background-color: ${algorithmColors[algo]}"></div>
+        <span class="text-sm flex-1">${algo} Path</span>
+      `;
+      
+      legendContainer.appendChild(legendItem);
+    }
+  }
+
+  // EDA Functions
+  function showEDA() {
+    document.getElementById('eda-section').classList.remove('hidden');
+    loadEDA();
+  }
+
+  function hideEDA() {
+    document.getElementById('eda-section').classList.add('hidden');
+  }
+
+  async function loadEDA() {
+    const loadingElement = document.getElementById('eda-loading');
+    const errorElement = document.getElementById('eda-error');
+    const visualizationsElement = document.getElementById('eda-visualizations');
+    const statisticsElement = document.getElementById('eda-statistics');
+    
+    // Show loading, hide error and previous content
+    loadingElement.classList.remove('hidden');
+    errorElement.classList.add('hidden');
+    visualizationsElement.innerHTML = '';
+    statisticsElement.innerHTML = '';
+
+    try {
+      const response = await fetch('/get_eda_visualizations');
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to load EDA data');
+      }
+
+      // Hide loading
+      loadingElement.classList.add('hidden');
+
+      // Display statistics
+      if (data.statistics) {
+        displayStatistics(data.statistics, statisticsElement);
+      }
+
+      // Display visualizations
+      if (data.visualizations) {
+        displayVisualizations(data.visualizations, visualizationsElement);
+      }
+
+    } catch (error) {
+      console.error('Error loading EDA:', error);
+      loadingElement.classList.add('hidden');
+      errorElement.classList.remove('hidden');
+      document.getElementById('eda-error-message').textContent = error.message;
+    }
+  }
+
+  function displayStatistics(stats, container) {
+    let html = '';
+
+    // Basic statistics
+    if (stats.total_roads) {
+      html += `
+        <div class="eda-stat-card">
+          <div class="eda-stat-value">${stats.total_roads.toLocaleString()}</div>
+          <div class="eda-stat-label">Total Roads</div>
+        </div>
+      `;
+    }
+
+    if (stats.total_nodes) {
+      html += `
+        <div class="eda-stat-card">
+          <div class="eda-stat-value">${stats.total_nodes.toLocaleString()}</div>
+          <div class="eda-stat-label">Total Nodes</div>
+        </div>
+      `;
+    }
+
+    if (stats.blocked_roads !== undefined) {
+      html += `
+        <div class="eda-stat-card">
+          <div class="eda-stat-value">${stats.blocked_roads}</div>
+          <div class="eda-stat-label">Blocked Roads</div>
+        </div>
+      `;
+    }
+
+    if (stats.avg_distance) {
+      html += `
+        <div class="eda-stat-card">
+          <div class="eda-stat-value">${Math.round(stats.avg_distance)}m</div>
+          <div class="eda-stat-label">Avg Distance</div>
+        </div>
+      `;
+    }
+
+    container.innerHTML = html;
+  }
+
+  function displayVisualizations(visualizations, container) {
+      let html = '';
+
+      // Define visualization titles and order (removed 'statistics')
+      const vizOrder = [
+          { key: 'speed_limit', title: 'Speed Limit Distribution' },
+          { key: 'blocked_edges', title: 'Blocked Roads Distribution' },
+          { key: 'dead_ends', title: 'Dead End Distribution' },
+          { key: 'road_direction', title: 'Road Direction Distribution' },
+          { key: 'distance', title: 'Distance Distribution' },
+          { key: 'duration', title: 'Duration Distribution' }
+      ];
+
+      vizOrder.forEach(viz => {
+          if (visualizations[viz.key]) {
+              html += `
+                  <div class="eda-viz-card">
+                      <div class="eda-viz-title">${viz.title}</div>
+                      <img src="data:image/png;base64,${visualizations[viz.key]}" 
+                          alt="${viz.title}" 
+                          class="eda-viz-image" />
+                  </div>
+              `;
+          }
+      });
+
+      container.innerHTML = html;
+  }
+
+  // Algorithm Metrics Functions
+function showAlgorithmMetrics() {
+  document.getElementById('algorithm-metrics-section').classList.remove('hidden');
+  loadAlgorithmMetrics();
+}
+
+function hideAlgorithmMetrics() {
+  document.getElementById('algorithm-metrics-section').classList.add('hidden');
+}
+
+async function loadAlgorithmMetrics() {
+  const loadingElement = document.getElementById('metrics-loading');
+  const errorElement = document.getElementById('metrics-error');
+  const visualizationsElement = document.getElementById('metrics-visualizations');
+  const statisticsElement = document.getElementById('metrics-statistics');
+  
+  // Show loading, hide error and previous content
+  loadingElement.classList.remove('hidden');
+  errorElement.classList.add('hidden');
+  visualizationsElement.innerHTML = '';
+  statisticsElement.innerHTML = '';
+
+  try {
+    // Get current simulation parameters
+    const startNode = document.getElementById('start_node').value.trim();
+    const endNode = document.getElementById('end_node').value.trim();
+    
+    if (!startNode || !endNode) {
+      throw new Error('Please set start and end nodes first');
+    }
+
+    // Prepare blocked edges
+    const blockedEdgesArray = Array.from(blockedEdges).map(edge => {
+      try { return JSON.parse(edge); } catch (e) { return null; }
+    }).filter(edge => edge !== null);
+
+    // Prepare disaster edges
+    const disasterEdgesArray = Array.from(disasterEdges).map(edge => {
+      try { return JSON.parse(edge); } catch (e) { return null; }
+    }).filter(edge => edge !== null);
+
+    const requestData = {
+      start_node: startNode,
+      end_node: endNode,
+      blocked_edges: blockedEdgesArray,
+      disaster_edges: disasterEdgesArray
+    };
+
+    const response = await fetch('/get_algorithm_metrics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestData)
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to load algorithm metrics');
+    }
+
+    // Hide loading
+    loadingElement.classList.add('hidden');
+
+    // Display metrics
+    if (data.scalability_metrics) {
+      displayMetricsStatistics(data.scalability_metrics, statisticsElement);
+    }
+
+    // Display visualizations
+    if (data.visualizations) {
+          displayMetricsVisualizations(data.visualizations, visualizationsElement);
+        }
+
+      } catch (error) {
+        console.error('Error loading algorithm metrics:', error);
+        loadingElement.classList.add('hidden');
+        errorElement.classList.remove('hidden');
+        document.getElementById('metrics-error-message').textContent = error.message;
+      }
+    }
+
+    function displayMetricsStatistics(metrics, container) {
+      let html = '';
+
+      if (metrics.computational_efficiency) {
+        const eff = metrics.computational_efficiency;
+        html += `
+          <div class="eda-stat-card" style="border-left-color: #dc2626;">
+            <div class="eda-stat-value">${eff.avg_execution_time.toFixed(4)}s</div>
+            <div class="eda-stat-label">Avg Execution Time</div>
+          </div>
+        `;
+      }
+
+      if (metrics.computational_efficiency) {
+        const eff = metrics.computational_efficiency;
+        html += `
+          <div class="eda-stat-card" style="border-left-color: #059669;">
+            <div class="eda-stat-value">${eff.avg_path_cost.toFixed(2)}</div>
+            <div class="eda-stat-label">Avg Path Cost</div>
+          </div>
+        `;
+      }
+
+      if (metrics.adaptability) {
+        const adapt = metrics.adaptability;
+        html += `
+          <div class="eda-stat-card" style="border-left-color: #7c3aed;">
+            <div class="eda-stat-value">${(adapt.success_rate * 100).toFixed(1)}%</div>
+            <div class="eda-stat-label">Success Rate</div>
+          </div>
+        `;
+      }
+
+      container.innerHTML = html;
+    }
+
+    function displayMetricsVisualizations(visualizations, container) {
+        let html = '';
+
+        // Single container with all metrics in one visualization
+        if (visualizations.algorithm_comparison) {
+            html += `
+                <div class="mb-6">
+                    <h4 class="font-semibold text-lg mb-3">Algorithm Performance Metrics</h4>
+                    <div class="bg-white p-4 rounded-lg shadow-sm border">
+                        <img src="data:image/png;base64,${visualizations.algorithm_comparison}" 
+                            alt="Algorithm Performance Metrics" 
+                            class="w-full h-auto rounded" />
+                    </div>
+                </div>
+            `;
+        }
+
+        container.innerHTML = html;
+    }
+
+  // Add this function to validate fire origin node as a potential end node
+  function validateFireOriginAsEndNode(fireOrigin, endNode) {
+    return fireOrigin === endNode;
+  }
+
+  // Toggle algorithm display
+  function toggleAlgorithm(algorithm) {
+    // If clicking the same algorithm again, show all
+    if (currentSelectedAlgorithm === algorithm) {
+      algorithm = null;
+    }
+    
+    // Update current selection
+    currentSelectedAlgorithm = algorithm;
+    
+    // Reset all legend items
+    document.querySelectorAll('#algorithm-legend .legend-item').forEach(item => {
+      item.classList.remove('active');
+    });
+    
+    // Activate selected legend item if an algorithm is selected
+    if (algorithm) {
+      document.getElementById(`legend-${algorithm}`).classList.add('active');
+    }
+    
+    // Update display based on selection
+    updateAlgorithmDisplay();
+  }
+
+  // Update algorithm display based on selection
+  function updateAlgorithmDisplay() {
+    // Clear all paths from map
+    for (const algo in pathLayers) {
+      map.removeLayer(pathLayers[algo]);
+    }
+    pathLayers = {};
+    
+    // Clear all race markers
+    clearRaceMarkers();
+    
+    // Show only the selected algorithm or all algorithms
+    if (currentSelectedAlgorithm && allAlgorithmResults[currentSelectedAlgorithm]) {
+      // Show only the selected algorithm
+      const algo = currentSelectedAlgorithm;
+      const result = allAlgorithmResults[algo];
+      
+      if (result.path && result.path.length > 0) {
+        const latLngs = pathToLatLngs(result.path);
+        if (latLngs.length > 1) {
+          // Add path to map
+          pathLayers[algo] = L.polyline(latLngs, {
+            color: algorithmColors[algo],
+            weight: 4,
+            opacity: 0.7,
+            dashArray: algo === 'Ant Colony' ? '5, 5' : null,
+            className: 'path-line'
+          }).addTo(map).bindPopup(`${algo} Path`);
+        }
+      }
+      
+      // Update results display for single algorithm
+      updateSingleAlgorithmResults(algo, result);
+    } else {
+      // Show all algorithms
+      for (const algo in allAlgorithmResults) {
+        const result = allAlgorithmResults[algo];
+        
+        if (result.path && result.path.length > 0) {
+          const latLngs = pathToLatLngs(result.path);
+          if (latLngs.length > 1) {
+            // Add path to map
+            pathLayers[algo] = L.polyline(latLngs, {
+              color: algorithmColors[algo],
+              weight: 4,
+              opacity: 0.7,
+              dashArray: algo === 'Ant Colony' ? '5, 5' : null,
+              className: 'path-line'
+            }).addTo(map).bindPopup(`${algo} Path`);
+          }
+        }
+      }
+      
+      // Update results display for all algorithms
+      updateAllAlgorithmResults();
+    }
+  }
+
+  // Update results display for a single algorithm
+  function updateSingleAlgorithmResults(algo, result) {
+    const resultsDiv = document.getElementById("results");
+    
+    let content = `
+      <div class="mb-4">
+        <h4 class="font-semibold text-lg mb-2">${algo} Algorithm Results</h4>
+        <div class="bg-white p-4 rounded-lg shadow-sm border">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <p class="text-sm text-gray-600">Path Found:</p>
+              <p class="font-semibold">${result.path_found ? '✅ Yes' : '❌ No'}</p>
+            </div>
+            <div>
+              <p class="text-sm text-gray-600">Execution Time:</p>
+              <p class="font-semibold">${result.execution_time > 0 ? result.execution_time.toFixed(4) + 's' : 'N/A'}</p>
+            </div>
+            <div>
+              <p class="text-sm text-gray-600">Path Cost:</p>
+              <p class="font-semibold">${result.cost > 0 ? result.cost.toFixed(2) : 'N/A'}</p>
+            </div>
+            <div>
+              <p class="text-sm text-gray-600">Path Length:</p>
+              <p class="font-semibold">${result.path_length} nodes</p>
+            </div>
+            <div>
+              <p class="text-sm text-gray-600">Travel Time:</p>
+              <p class="font-semibold">${result.travel_time > 0 ? result.travel_time.toFixed(2) + ' min' : 'N/A'}</p>
+            </div>
+          </div>
+          ${result.path_found ? `
+          <div class="mt-4">
+            <p class="text-sm text-gray-600 mb-2">Path Preview:</p>
+            <div class="text-xs bg-gray-100 p-2 rounded max-h-32 overflow-y-auto">
+              ${result.path.slice(0, 10).join(' → ')}${result.path.length > 10 ? ' → ...' : ''}
+            </div>
+          </div>
+          ` : ''}
+        </div>
+      </div>
+      <div class="text-center">
+        <button onclick="toggleAlgorithm(null)" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+          Show All Algorithms
+        </button>
+      </div>
+    `;
+    
+    resultsDiv.innerHTML = content;
+  }
+
+  // Update results display for all algorithms
+  function updateAllAlgorithmResults() {
+    const resultsDiv = document.getElementById("results");
+    
+    if (Object.keys(allAlgorithmResults).length === 0) {
+      resultsDiv.innerHTML = `
+        <div class="text-center text-gray-500 my-10">
+          Set your blocked roads and click "Start Race" to begin
+        </div>`;
+      return;
+    }
+    
+    let table = `
+      <div class="mb-4">
+        <h4 class="font-semibold text-lg mb-2">All Algorithm Results</h4>
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th>Algorithm</th>
+              <th>Time</th>
+              <th>Cost</th>
+              <th>Nodes</th>
+              <th>Travel Time</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>`;
+    
+    // Sort algorithms by COST (lower cost is better)
+    const sortedAlgorithms = Object.keys(allAlgorithmResults).sort((a, b) => {
+      const costA = allAlgorithmResults[a].cost;
+      const costB = allAlgorithmResults[b].cost;
+      
+      // Handle cases where algorithms didn't find a path
+      if (costA <= 0 && costB <= 0) return 0;
+      if (costA <= 0) return 1;
+      if (costB <= 0) return -1;
+      
+      return costA - costB;
+    });
+    
+    sortedAlgorithms.forEach((algo, index) => {
+      const data = allAlgorithmResults[algo];
+      const isBest = index === 0 && data.cost > 0;
+      
+      table += `
+        <tr>
+          <td class="font-semibold" style="color: ${algorithmColors[algo]}">
+            ${algo}${isBest ? ' 🥇' : ''}
+          </td>
+          <td class="font-mono">${data.execution_time > 0 ? data.execution_time.toFixed(4) + 's' : 'DNF'}</td>
+          <td class="font-mono">${data.cost > 0 ? data.cost.toFixed(2) : 'N/A'}</td>
+          <td>${data.path_length}</td>
+          <td class="font-mono">${data.travel_time > 0 ? data.travel_time.toFixed(2) + ' min' : 'N/A'}</td>
+          <td>${data.path_found ? '✅' : '❌'}</td>
+        </tr>`;
+    });
+    
+    table += `
+          </tbody>
+        </table>
+        <p class="text-xs text-gray-500 mt-2">🥇 = Best (Lowest Cost) | Click on algorithm names in the legend to view individual results</p>
+      </div>`;
+    
+    // Add blocked roads list
+    let blockedRoadsList = '<div class="w-full text-sm"><h4 class="font-semibold text-gray-800 mb-2">Blocked Roads:</h4>';
+    if (blockedEdges.size > 0) {
+      Array.from(blockedEdges).forEach(edge => {
+        try {
+          const road = JSON.parse(edge);
+          blockedRoadsList += `<div class="text-sm text-red-600 py-1">${road.start_node} → ${road.end_node}</div>`;
+        } catch (e) {
+          console.error("Error parsing edge:", edge);
+        }
+      });
+    } else {
+      blockedRoadsList += '<div class="text-sm text-gray-500 py-1">No roads were blocked</div>';
+    }
+    blockedRoadsList += '</div>';
+    
+    resultsDiv.innerHTML = table + blockedRoadsList;
+  }
+
+  // Strict coordinate validation to match CSV format
+  function validateCoordinate(coordStr) {
+    const regex = /^\(-?\d+\.\d+,\s*-?\d+\.\d+\)$/;
+    if (!regex.test(coordStr)) {
+      return null;
+    }
+    // Check if coordinate exists in road data
+    return allRoads.some(road => 
+      road.start_node === coordStr || road.end_node === coordStr
+    ) ? coordStr : null;
+  }
+
+  // Parse and validate coordinate input
+  function parseCoordinateInput(coordStr) {
+    // Remove any extra whitespace
+    coordStr = coordStr.trim();
+    
+    // Try to validate as-is first
+    let validated = validateCoordinate(coordStr);
+    if (validated) return validated;
+    
+    // Try to parse if user entered raw numbers
+    const numbers = coordStr.match(/-?\d+\.\d+/g);
+    if (numbers && numbers.length === 2) {
+      const formatted = `(${numbers[0]}, ${numbers[1]})`;
+      validated = validateCoordinate(formatted);
+      if (validated) return validated;
+    }
+    
+    return null;
+  }
+
+  // Convert path to LatLng array
+  function pathToLatLngs(path) {
+    return path.map(node => {
+      const coords = node.match(/-?\d+\.\d+/g);
+      return coords ? L.latLng(parseFloat(coords[0]), parseFloat(coords[1])) : null;
+    }).filter(coord => coord !== null);
+  }
+
+  // Clear previous paths from map
+  function clearPaths() {
+    for (const algo in pathLayers) {
+      map.removeLayer(pathLayers[algo]);
+    }
+    pathLayers = {};
+    if (startMarker) map.removeLayer(startMarker);
+    if (endMarker) map.removeLayer(endMarker);
+    clearRaceMarkers();
+  }
+
+  // Clear race markers from map
+  function clearRaceMarkers() {
+    for (const algo in raceMarkers) {
+      map.removeLayer(raceMarkers[algo]);
+    }
+    raceMarkers = {};
+  }
+
+  // Clear road data from map
+  function clearRoads() {
+    roadLayers.forEach(layer => map.removeLayer(layer.layer));
+    roadLayers = [];
+  }
+
+  // Load road data from server
+  async function loadRoadData() {
+    try {
+      const response = await fetch('/get_road_data');
+      allRoads = await response.json();
+      plotRoads(allRoads);
+    } catch (error) {
+      console.error('Error loading road data:', error);
+      // Fallback: Show error message
+      document.getElementById('results').innerHTML = `
+        <div class="text-center text-red-500 my-10">
+          <p class="font-semibold">Error loading road data</p>
+          <p class="text-sm">Please check if the server is running and the data file exists</p>
+        </div>`;
+    }
+  }
+
+  // Plot all roads on the map
+  function plotRoads(roads) {
+      clearRoads();
+      
+      roads.forEach(road => {
+          const startCoords = road.start_node.match(/-?\d+\.\d+/g);
+          const endCoords = road.end_node.match(/-?\d+\.\d+/g);
+          
+          if (startCoords && endCoords) {
+              // Check both directions for blocked status
+              const forwardKey = `${road.start_node.trim()},${road.end_node.trim()}`;
+              const reverseKey = `${road.end_node.trim()},${road.start_node.trim()}`;
+              
+              // Check if this edge is manually blocked
+              const isManuallyBlocked = Array.from(blockedEdges).some(storedEdge => {
+                  try {
+                      const parsedEdge = JSON.parse(storedEdge);
+                      return (parsedEdge.start_node === road.start_node.trim() && 
+                              parsedEdge.end_node === road.end_node.trim()) ||
+                            (parsedEdge.start_node === road.end_node.trim() && 
+                              parsedEdge.end_node === road.start_node.trim());
+                  } catch (e) {
+                      return false;
+                  }
+              });
+              
+              // Check if this edge is affected by disaster
+              let disasterEffect = null;
+              Array.from(disasterEdges).forEach(storedEdge => {
+                  try {
+                      const parsedEdge = JSON.parse(storedEdge);
+                      if ((parsedEdge.start_node === road.start_node.trim() && 
+                          parsedEdge.end_node === road.end_node.trim()) ||
+                          (parsedEdge.start_node === road.end_node.trim() && 
+                          parsedEdge.end_node === road.start_node.trim())) {
+                          disasterEffect = parsedEdge;
+                      }
+                  } catch (e) {
+                      console.error("Error parsing disaster edge:", e);
+                  }
+              });
+              
+              let roadColor = '#888888';
+              let roadWeight = 2;
+              let roadClassName = 'road-line';
+              let roadOpacity = 0.7;
+              
+              if (isManuallyBlocked) {
+                  roadColor = '#dc2626'; // Red for blocked
+                  roadWeight = 4;
+                  roadClassName = 'road-line blocked';
+              } else if (disasterEffect) {
+                  // Special color for end node access edges in fire disasters
+                  if (disasterEffect.is_end_node_access) {
+                    roadColor = disasterColors['end_node_access']; // Green for end node access
+                    roadWeight = 4;
+                  } else {
+                    roadColor = disasterColors[disasterEffect.effect_type] || '#888888';
+                    roadWeight = disasterEffect.completely_blocked ? 4 : 3;
+                  }
+                  roadClassName = 'road-line';
+                  roadOpacity = 0.9;
+              }
+              
+              const line = L.polyline([
+                  [parseFloat(startCoords[0]), parseFloat(startCoords[1])],
+                  [parseFloat(endCoords[0]), parseFloat(endCoords[1])]
+              ], {
+                  color: roadColor,
+                  weight: roadWeight,
+                  opacity: roadOpacity,
+                  className: roadClassName
+              }).addTo(map);
+
+              // Make roads clickable for blocking/unblocking
+              line.on('click', function(e) {
+                  handleRoadBlocking({
+                      start_node: road.start_node,
+                      end_node: road.end_node,
+                      layer: line
+                  });
+              });
+              
+              // Add popup with disaster info if applicable
+              if (disasterEffect) {
+                  let popupContent = `Road: ${road.start_node} → ${road.end_node}<br>`;
+                  popupContent += `Disaster: ${disasterEffect.effect_type}<br>`;
+                  if (disasterEffect.is_end_node_access) {
+                      popupContent += 'Status: End Node Access Route<br>';
+                      popupContent += `Delay: ${Math.round(disasterEffect.delay_seconds / 60)} minutes`;
+                  } else if (disasterEffect.completely_blocked) {
+                      popupContent += 'Status: Completely Blocked';
+                  } else {
+                      popupContent += `Delay: ${Math.round(disasterEffect.delay_seconds / 60)} minutes`;
+                  }
+                  line.bindPopup(popupContent);
+              } else {
+                  line.bindPopup(`Road: ${road.start_node} → ${road.end_node}`);
+              }
+              
+              roadLayers.push({
+                  start: road.start_node,
+                  end: road.end_node,
+                  layer: line,
+                  isBlocked: isManuallyBlocked,
+                  disasterEffect: disasterEffect
+              });
+          }
+      });
+      updateBlockedCount();
+  }
+
+  // Function to handle road blocking/unblocking
+  function handleRoadBlocking(road) {
+      if (!isBlockingMode) return;
+
+      // Create a proper edge object
+      const edge = {
+          start_node: road.start_node.trim(),
+          end_node: road.end_node.trim()
+      };
+      
+      // Stringify for consistent comparison
+      const edgeKey = JSON.stringify(edge);
+      const reverseEdgeKey = JSON.stringify({
+          start_node: edge.end_node,
+          end_node: edge.start_node
+      });
+
+      // Check if already blocked (either direction)
+      let isAlreadyBlocked = false;
+      const edgesToRemove = [];
+      
+      blockedEdges.forEach(storedEdge => {
+          const parsedEdge = JSON.parse(storedEdge);
+          if ((parsedEdge.start_node === edge.start_node && 
+              parsedEdge.end_node === edge.end_node) ||
+              (parsedEdge.start_node === edge.end_node && 
+              parsedEdge.end_node === edge.start_node)) {
+              isAlreadyBlocked = true;
+              edgesToRemove.push(storedEdge);
+          }
+      });
+
+      if (isAlreadyBlocked) {
+          // Unblock all matching edges
+          edgesToRemove.forEach(e => blockedEdges.delete(e));
+      } else {
+          if (blockedEdges.size >= MAX_BLOCKED) {
+              alert(`Maximum ${MAX_BLOCKED} blocked roads allowed`);
+              return;
+          }
+          // Block this direction
+          blockedEdges.add(edgeKey);
+      }
+
+      updateBlockedCount();
+      plotRoads(allRoads);
+  }
+
+  function updateBlockedCount() {
+    document.getElementById('blocked-count').textContent = blockedEdges.size;
+  }
+
+  function updateRaceState(state) {
+    raceState = state;
+    const stateElement = document.getElementById('race-state');
+    stateElement.textContent = state.replace('_', ' ');
+    
+    // Remove all color classes
+    stateElement.className = 'px-3 py-1 rounded-full text-sm font-medium transition-colors duration-300';
+    
+    // Add appropriate color class
+    switch(state) {
+      case 'not_started':
+        stateElement.classList.add('bg-gray-200', 'text-gray-800');
+        break;
+      case 'in_progress':
+        stateElement.classList.add('bg-yellow-200', 'text-yellow-800');
+        break;
+      case 'finished':
+        stateElement.classList.add('bg-green-200', 'text-green-800');
+        break;
+      default:
+        stateElement.classList.add('bg-gray-200', 'text-gray-800');
+    }
+  }
+
+  // Simulate a disaster
+  async function simulateDisaster(disasterType) {
+    try {
+      let requestData = {
+        disaster_type: disasterType
+      };
+      
+      // For fire disaster, we need an origin node
+      if (disasterType === 'fire') {
+        document.getElementById('fire-origin-container').classList.remove('hidden');
+        
+        const fireOriginInput = document.getElementById('fire_origin').value.trim();
+        if (!fireOriginInput) {
+          alert('Please provide a fire origin node for fire disaster simulation');
+          return;
+        }
+        
+        const fireOrigin = parseCoordinateInput(fireOriginInput);
+        if (!fireOrigin) {
+          alert('Please provide a valid fire origin node coordinate');
+          return;
+        }
+        
+        // Get end node to pass to backend for special handling
+        const endNodeInput = document.getElementById('end_node').value.trim();
+        const endNode = parseCoordinateInput(endNodeInput);
+        
+        requestData.origin_node = fireOrigin;
+        if (endNode) {
+          requestData.end_node = endNode; // Pass end node for special handling
+        }
+        
+        // Show fire containment info
+        const disasterInfoDiv = document.getElementById('disaster-info');
+        let infoContent = `
+          <div class="disaster-info fire">
+            <h4 class="font-semibold">FIRE DISASTER - CONTAINMENT ACTIVE</h4>
+            <div class="text-sm mt-1">
+              <p>🔥 Fire containment protocol activated</p>
+              <p>🚫 Limited to 2-3 blocked edges maximum</p>
+              ${endNode && fireOrigin === endNode ? 
+                '<p class="text-green-600 font-semibold">🎯 End node is fire origin - Will be reachable with 1-2 min delay</p>' : 
+                '<p>🛡️ Prevents uncontrolled spread</p>'
+              }
+              <p>📍 Origin: ${fireOrigin}</p>
+            </div>
+          </div>
+        `;
+        disasterInfoDiv.innerHTML = infoContent;
+        disasterInfoDiv.classList.remove('hidden');
+        
+      } else {
+        document.getElementById('fire-origin-container').classList.add('hidden');
+      }
+      
+      const response = await fetch('/simulate_disaster', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Store current disaster info
+      currentDisaster = data.disaster_info;
+      
+      // Clear previous disaster edges
+      disasterEdges.clear();
+      
+      // Add new disaster edges
+      data.affected_edges.forEach(edge => {
+        disasterEdges.add(JSON.stringify(edge));
+      });
+      
+      // Update disaster info display with containment info for fire
+      if (disasterType === 'fire') {
+        updateFireDisasterInfo(data.disaster_info);
+      } else {
+        updateDisasterInfo(data.disaster_info);
+      }
+      
+      // Replot roads with disaster effects
+      plotRoads(allRoads);
+      
+    } catch (error) {
+      console.error('Error simulating disaster:', error);
+      alert('Error simulating disaster: ' + error.message);
+    }
+  }
+
+  // Special update function for fire disaster with containment info
+  function updateFireDisasterInfo(disasterInfo) {
+    const disasterInfoDiv = document.getElementById('disaster-info');
+    
+    if (!disasterInfo) {
+      disasterInfoDiv.classList.add('hidden');
+      return;
+    }
+    
+    // Get end node info for special messaging
+    const endNodeInput = document.getElementById('end_node').value.trim();
+    const endNode = parseCoordinateInput(endNodeInput);
+    const isEndNodeFireOrigin = disasterInfo.origin_node === endNode;
+    
+    let infoContent = `
+      <div class="disaster-info fire">
+        <h4 class="font-semibold">🔥 FIRE DISASTER - CONTAINED</h4>
+        <div class="text-sm mt-1">
+          <p class="font-semibold text-green-600">✅ Fire successfully contained</p>
+          <p>Affected Edges: ${disasterInfo.affected_edges}</p>
+          <p>Blocked Edges: ${disasterInfo.blocked_edges} (Limited to prevent spread)</p>
+          <p>Delayed Edges: ${disasterInfo.delayed_edges}</p>
+          ${disasterInfo.end_node_access_edges > 0 ? 
+            `<p class="text-blue-600 font-semibold">🎯 End node access edges: ${disasterInfo.end_node_access_edges} (1-2 min delay)</p>` : 
+            ''
+          }
+          <p class="text-xs text-gray-500 mt-2">Containment Protocol: Limited to 2-3 blocked edges maximum to prevent uncontrolled spread</p>
+          ${disasterInfo.origin_node ? `<p>Origin: ${disasterInfo.origin_node}</p>` : ''}
+          ${isEndNodeFireOrigin ? 
+            '<p class="text-green-600 font-semibold mt-2">✅ End node will be reachable with additional delay</p>' : 
+            ''
+          }
+        </div>
+      </div>
+    `;
+    
+    disasterInfoDiv.innerHTML = infoContent;
+    disasterInfoDiv.classList.remove('hidden');
+  }
+
+  // Update disaster info display
+  function updateDisasterInfo(disasterInfo) {
+    const disasterInfoDiv = document.getElementById('disaster-info');
+    
+    if (!disasterInfo) {
+      disasterInfoDiv.classList.add('hidden');
+      return;
+    }
+    
+    let infoContent = `
+      <div class="disaster-info ${disasterInfo.type}">
+        <h4 class="font-semibold">${disasterInfo.type.toUpperCase()} Disaster</h4>
+        <div class="text-sm mt-1">
+          <p>Affected Edges: ${disasterInfo.affected_edges}</p>
+          <p>Blocked Edges: ${disasterInfo.blocked_edges}</p>
+          <p>Delayed Edges: ${disasterInfo.delayed_edges}</p>
+          ${disasterInfo.origin_node ? `<p>Origin: ${disasterInfo.origin_node}</p>` : ''}
+        </div>
+      </div>
+    `;
+    
+    disasterInfoDiv.innerHTML = infoContent;
+    disasterInfoDiv.classList.remove('hidden');
+  }
+
+  // Clear disaster effects
+  function clearDisaster() {
+    disasterEdges.clear();
+    currentDisaster = null;
+    document.getElementById('disaster-info').classList.add('hidden');
+    document.getElementById('fire-origin-container').classList.add('hidden');
+    plotRoads(allRoads);
+  }
+
+  async function startRace() {
+    const startNodeInput = document.getElementById("start_node").value.trim();
+    const endNodeInput = document.getElementById("end_node").value.trim();
+    const resultsDiv = document.getElementById("results");
+
+    // Validate coordinates
+    const startNode = parseCoordinateInput(startNodeInput);
+    const endNode = parseCoordinateInput(endNodeInput);
+    
+    if (!startNode || !endNode) {
+      resultsDiv.innerHTML = `
+        <div class="text-center text-red-500 my-10">
+          <p class="font-semibold">Please provide valid start and end coordinates</p>
+          <p class="text-sm">Example: Start node: (14.179543, 121.241683) , End node: (14.153306, 121.248118)</p>
+        </div>`;
+      return;
+    }
+
+    // Check if end node is fire origin - now show informational message instead of warning
+    let isEndNodeFireOrigin = false;
+    if (currentDisaster && currentDisaster.type === 'fire') {
+      const fireOrigin = currentDisaster.origin_node;
+      if (fireOrigin === endNode) {
+        isEndNodeFireOrigin = true;
+        // No confirmation needed anymore since end node is reachable
+      }
+    }
+
+    // Prepare blocked edges in CORRECT format
+    const blockedEdgesArray = Array.from(blockedEdges).map(edge => {
+        try {
+            return JSON.parse(edge); // Parse the stored JSON string
+        } catch (e) {
+            console.error("Error parsing edge:", edge);
+            return null;
+        }
+    }).filter(edge => edge !== null);
+
+    // Prepare disaster edges
+    const disasterEdgesArray = Array.from(disasterEdges).map(edge => {
+        try {
+            return JSON.parse(edge);
+        } catch (e) {
+            console.error("Error parsing disaster edge:", edge);
+            return null;
+        }
+    }).filter(edge => edge !== null);
+
+    // Prepare request data in exact format
+    const requestData = {
+      start_node: startNode,
+      end_node: endNode,
+      blocked_edges: blockedEdgesArray,
+      disaster_edges: disasterEdgesArray
+    };
+
+    resultsDiv.innerHTML = `
+      <div class="h-full flex items-center justify-center text-gray-500">
+        <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mr-3"></div>
+        <span class="text-lg">Calculating race paths...</span>
+        ${isEndNodeFireOrigin ? 
+          '<div class="mt-2 text-sm text-blue-600">Note: End node is fire origin - paths will have additional delay</div>' : 
+          ''
+        }
+      </div>`;
+    clearPaths();
+    updateRaceState('in_progress');
+
+    try {
+      const response = await fetch("/run_simulation", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(requestData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.results || !Array.isArray(data.results)) {
+        throw new Error("Invalid server response format");
+      }
+
+      // Store all algorithm results
+      allAlgorithmResults = {};
+      data.results.forEach(result => {
+        allAlgorithmResults[result.algorithm] = result;
+      });
+
+      // Add markers for start and end points
+      const startCoords = startNode.match(/-?\d+\.\d+/g);
+      const endCoords = endNode.match(/-?\d+\.\d+/g);
+      
+      if (startCoords) {
+        startMarker = L.marker([parseFloat(startCoords[0]), parseFloat(startCoords[1])], {
+          icon: L.divIcon({className: 'start-icon', html: '🟢', iconSize: [20, 20]})
+        }).addTo(map).bindPopup("Start Point");
+      }
+      
+      if (endCoords) {
+        // Special marker for fire origin end node
+        const isFireOrigin = currentDisaster && currentDisaster.type === 'fire' && currentDisaster.origin_node === endNode;
+        endMarker = L.marker([parseFloat(endCoords[0]), parseFloat(endCoords[1])], {
+          icon: L.divIcon({
+            className: 'end-icon', 
+            html: isFireOrigin ? '🔥' : '🔴',
+            iconSize: [20, 20]
+          })
+        }).addTo(map).bindPopup(isFireOrigin ? "End Point (Fire Origin - Delayed Access)" : "End Point");
+      }
+
+      // Fit bounds to include both points
+      if (startCoords && endCoords) {
+        map.fitBounds([
+          [parseFloat(startCoords[0]), parseFloat(startCoords[1])],
+          [parseFloat(endCoords[0]), parseFloat(endCoords[1])]
+        ], {padding: [50, 50]});
+      }
+
+      // Process each algorithm's result for race simulation
+      raceData = {};
+      let maxPathLength = 0;
+
+      // Initialize all algorithms, even if they didn't find a path
+      const allAlgorithms = ['Dijkstra', 'A*', 'Greedy BFS', 'Ant Colony'];
+      allAlgorithms.forEach(algo => {
+        const result = allAlgorithmResults[algo] || {
+          algorithm: algo,
+          path_found: false,
+          path: [],
+          execution_time: 0,
+          cost: -1,
+          path_length: 0,
+          travel_time: 0
+        };
+
+        if (result.path_found && result.path) {
+          const latLngs = pathToLatLngs(result.path);
+          if (latLngs.length > 1) {
+            raceData[algo] = {
+              path: latLngs,
+              color: algorithmColors[algo],
+              currentIndex: 0,
+              finished: false,
+              finishTime: result.execution_time,
+              cost: result.cost,
+              pathLength: result.path_length,
+              travelTime: result.travel_time
+            };
+            maxPathLength = Math.max(maxPathLength, result.path_length);
+            
+            // Add path to map
+            const pathLayer = L.polyline(latLngs, {
+              color: algorithmColors[algo],
+              weight: 4,
+              opacity: 0.7,
+              dashArray: algo === 'Ant Colony' ? '5, 5' : null,
+              className: 'path-line'
+            }).addTo(map).bindPopup(`${algo} Path`);
+            
+            pathLayers[algo] = pathLayer;
+          }
+        } else {
+          // For algorithms that didn't find a path
+          raceData[algo] = {
+            path: [],
+            color: algorithmColors[algo],
+            currentIndex: 0,
+            finished: true, // Mark as finished immediately
+            finishTime: 0,
+            cost: -1,
+            pathLength: 0,
+            travelTime: 0
+          };
+        }
+      });
+
+      // Create race progress UI
+      let raceUI = '<div class="space-y-4">';
+      
+      if (isEndNodeFireOrigin) {
+        raceUI += `
+          <div class="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-4">
+            <strong>Fire Origin Destination:</strong> The end node is the fire origin. Paths will have 1-2 minute delays but remain reachable.
+          </div>
+        `;
+      }
+      
+      allAlgorithms.forEach(algo => {
+        const data = raceData[algo];
+        raceUI += `
+          <div class="race-algorithm" data-algo="${algo}">
+            <div class="flex justify-between items-center">
+              <div class="flex items-center">
+                <div class="w-3 h-3 rounded-full mr-2" style="background-color: ${algorithmColors[algo]}"></div>
+                <span class="font-semibold">${algo}</span>
+              </div>
+              <div class="race-position">${data.finished ? 'DNF' : '1st'}</div>
+            </div>
+            <div class="race-progress">
+              <div class="race-progress-bar" style="width: ${data.finished ? 0 : 0}%; background-color: ${algorithmColors[algo]}"></div>
+            </div>
+            <div class="text-xs text-gray-500 mt-1">
+              <span class="distance">${data.finished ? '0' : '0'}/${data.pathLength} nodes</span>
+              <span class="speed float-right">0.00 nodes/s</span>
+            </div>
+          </div>`;
+      });
+      
+      raceUI += '</div>';
+      resultsDiv.innerHTML = raceUI;
+
+      // Start the race animation
+      startRaceAnimation(raceData);
+
+    } catch (error) {
+      resultsDiv.innerHTML = `
+        <div class="text-center text-red-500 my-10">
+          <p class="font-semibold">Error: ${error.message}</p>
+          <p class="text-sm">Please check your inputs and try again.</p>
+        </div>`;
+      console.error("Race error:", error);
+      updateRaceState('not_started');
+    }
+  }
+
+  function startRaceAnimation(raceData) {
+    // Clear any existing interval
+    if (raceInterval) clearInterval(raceInterval);
+    
+    // Clear existing markers
+    clearRaceMarkers();
+    
+    // Create markers for each algorithm
+    const algorithms = Object.keys(raceData);
+    algorithms.forEach(algo => {
+      if (raceData[algo].path.length > 0) {
+        const firstPoint = raceData[algo].path[0];
+        raceMarkers[algo] = L.marker(firstPoint, {
+          icon: L.divIcon({
+            className: 'race-marker',
+            html: `<div style="background-color: ${raceData[algo].color}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>`,
+            iconSize: [20, 20]
+          })
+        }).addTo(map).bindPopup(`${algo} Current Position`);
+      }
+    });
+    
+    let startTime = Date.now();
+    let positions = algorithms.map(() => 0);
+    let finishedCount = 0;
+    
+    raceInterval = setInterval(() => {
+      const currentTime = Date.now() - startTime;
+      let allFinished = true;
+      let maxProgress = 0;
+      
+      algorithms.forEach((algo, index) => {
+        const data = raceData[algo];
+        if (data.finished) {
+          positions[index] = data.path.length;
+          return;
+        }
+        
+        allFinished = false;
+        
+        // Calculate progress based on time (simulating speed)
+        const targetProgress = Math.min(1, currentTime / (data.finishTime * 1000));
+        const targetIndex = Math.floor(targetProgress * (data.path.length - 1));
+        
+        if (targetIndex > data.currentIndex) {
+          data.currentIndex = targetIndex;
+          const currentPoint = data.path[targetIndex];
+          
+          // Update marker position
+          if (raceMarkers[algo]) {
+            raceMarkers[algo].setLatLng(currentPoint);
+          }
+          
+          // Update progress bar
+          const progressPercent = (targetIndex / (data.path.length - 1)) * 100;
+          const algoElement = document.querySelector(`.race-algorithm[data-algo="${algo}"]`);
+          if (algoElement) {
+            algoElement.querySelector('.race-progress-bar').style.width = `${progressPercent}%`;
+            algoElement.querySelector('.distance').textContent = `${targetIndex}/${data.pathLength} nodes`;
+            
+            // Calculate speed (nodes per second)
+            const speed = targetIndex / (currentTime / 1000);
+            algoElement.querySelector('.speed').textContent = `${speed.toFixed(2)} nodes/s`;
+          }
+          
+          positions[index] = targetIndex;
+          
+          // Check if finished
+          if (targetIndex >= data.path.length - 1) {
+            data.finished = true;
+            finishedCount++;
+            
+            // Flash the marker when finished
+            if (raceMarkers[algo]) {
+              raceMarkers[algo].setIcon(L.divIcon({
+                className: 'race-marker',
+                html: `<div style="background-color: ${data.color}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 0 4px ${data.color}44;"></div>`,
+                iconSize: [20, 20]
+              }));
+            }
+          }
+        }
+        
+        maxProgress = Math.max(maxProgress, targetIndex);
+      });
+      
+      // Update positions for all algorithms based on COST (lower cost = better position)
+      if (!allFinished) {
+        // Create temporary array with current progress and cost data
+        const algorithmProgress = algorithms.map((algo, index) => {
+          const data = raceData[algo];
+          return {
+            algo: algo,
+            progress: positions[index],
+            cost: data.cost,
+            finished: data.finished
+          };
+        });
+        
+        // Sort by cost (lower cost is better), then by progress
+        algorithmProgress.sort((a, b) => {
+          // Finished algorithms come first
+          if (a.finished && !b.finished) return -1;
+          if (!a.finished && b.finished) return 1;
+          
+          // If both finished or both not finished, sort by cost
+          if (a.cost > 0 && b.cost > 0) {
+            if (a.cost !== b.cost) {
+              return a.cost - b.cost; // Lower cost is better
+            }
+          }
+          
+          // If same cost or invalid costs, sort by progress
+          return b.progress - a.progress; // Higher progress is better
+        });
+        
+        algorithmProgress.forEach((item, sortedIndex) => {
+          const algo = item.algo;
+          let positionText;
+          
+          if (sortedIndex === 0 && raceData[algo].finished) {
+            positionText = '🥇 Winner!';
+          } else if (sortedIndex === 1 && raceData[algo].finished) {
+            positionText = '🥈 2nd';
+          } else if (sortedIndex === 2 && raceData[algo].finished) {
+            positionText = '🥉 3rd';
+          } else if (sortedIndex === 3 && raceData[algo].finished) {
+            positionText = '4️⃣ 4th';
+          } else {
+            positionText = `${sortedIndex + 1}${getOrdinalSuffix(sortedIndex + 1)}`;
+          }
+          
+          const algoElement = document.querySelector(`.race-algorithm[data-algo="${algo}"]`);
+          if (algoElement) {
+            const positionElement = algoElement.querySelector('.race-position');
+            positionElement.textContent = positionText;
+            
+            // Color the positions
+            if (sortedIndex === 0) {
+              positionElement.className = 'race-position text-yellow-600';
+            } else if (sortedIndex === 1) {
+              positionElement.className = 'race-position text-gray-400';
+            } else if (sortedIndex === 2) {
+              positionElement.className = 'race-position text-amber-600';
+            } else {
+              positionElement.className = 'race-position';
+            }
+          }
+        });
+      }
+      
+      if (allFinished) {
+        clearInterval(raceInterval);
+        updateRaceState('finished');
+        
+        // Show final results table
+        showFinalResults(raceData);
+      }
+    }, 50); // Update every 50ms for smooth animation
+  }
+
+  function getOrdinalSuffix(num) {
+    const j = num % 10, k = num % 100;
+    if (j === 1 && k !== 11) return 'st';
+    if (j === 2 && k !== 12) return 'nd';
+    if (j === 3 && k !== 13) return 'rd';
+    return 'th';
+  }
+
+  function showFinalResults(raceData) {
+    const resultsDiv = document.getElementById("results");
+    
+    // Check if end node is fire origin
+    const endNodeInput = document.getElementById('end_node').value.trim();
+    const endNode = parseCoordinateInput(endNodeInput);
+    const isEndNodeFireOrigin = currentDisaster && currentDisaster.type === 'fire' && currentDisaster.origin_node === endNode;
+    
+    let table = `
+      <div class="mb-4">
+        ${isEndNodeFireOrigin ? `
+          <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+            <strong>Fire Origin Destination:</strong> The end node was the fire origin. Paths successfully reached the destination with additional delays.
+          </div>
+        ` : ''}
+        <h4 class="font-semibold text-lg mb-2">Final Results</h4>
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th>Position</th>
+              <th>Algorithm</th>
+              <th>Time</th>
+              <th>Cost</th>
+              <th>Nodes</th>
+            </tr>
+          </thead>
+          <tbody>`;
+    
+    // Sort algorithms by COST (lower cost is better)
+    const sortedAlgorithms = Object.keys(raceData).sort((a, b) => {
+      const costA = raceData[a].cost;
+      const costB = raceData[b].cost;
+      
+      // Handle cases where algorithms didn't find a path
+      if (costA <= 0 && costB <= 0) return 0;
+      if (costA <= 0) return 1;
+      if (costB <= 0) return -1;
+      
+      return costA - costB;
+    });
+    
+    // Medal emojis for top 4
+    const medals = ['🥇', '🥈', '🥉', '4️⃣'];
+    
+    sortedAlgorithms.forEach((algo, index) => {
+      const data = raceData[algo];
+      const position = index + 1;
+      const medal = position <= 4 ? medals[position - 1] : `${position}${getOrdinalSuffix(position)}`;
+      
+      table += `
+        <tr>
+          <td class="font-semibold">${medal}</td>
+          <td class="font-semibold" style="color: ${data.color}">${algo}</td>
+          <td class="font-mono">${data.finishTime > 0 ? data.finishTime.toFixed(4) + 's' : 'DNF'}</td>
+          <td class="font-mono">${data.cost > 0 ? data.cost.toFixed(2) : 'N/A'}</td>
+          <td>${data.pathLength}</td>
+        </tr>`;
+    });
+    
+    // Ensure all 4 algorithms are shown even if some didn't finish
+    const allAlgorithms = ['Dijkstra', 'A*', 'Greedy BFS', 'Ant Colony'];
+    const missingAlgorithms = allAlgorithms.filter(algo => !sortedAlgorithms.includes(algo));
+    
+    missingAlgorithms.forEach((algo, index) => {
+      const position = sortedAlgorithms.length + index + 1;
+      table += `
+        <tr>
+          <td class="font-semibold">${position}${getOrdinalSuffix(position)}</td>
+          <td class="font-semibold" style="color: ${algorithmColors[algo]}">${algo}</td>
+          <td class="font-mono text-gray-400">DNF</td>
+          <td class="font-mono text-gray-400">N/A</td>
+          <td class="text-gray-400">0</td>
+        </tr>`;
+    });
+    
+    table += `
+          </tbody>
+        </table>
+        <p class="text-xs text-gray-500 mt-2">🥇 = Best (Lowest Cost)</p>
+      </div>`;
+    
+    // Add blocked roads list
+    let blockedRoadsList = '<div class="w-full text-sm"><h4 class="font-semibold text-gray-800 mb-2">Blocked Roads:</h4>';
+    if (blockedEdges.size > 0) {
+      Array.from(blockedEdges).forEach(edge => {
+        try {
+          const road = JSON.parse(edge);
+          blockedRoadsList += `<div class="text-sm text-red-600 py-1">${road.start_node} → ${road.end_node}</div>`;
+        } catch (e) {
+          console.error("Error parsing edge:", edge);
+        }
+      });
+    } else {
+      blockedRoadsList += '<div class="text-sm text-gray-500 py-1">No roads were blocked</div>';
+    }
+    blockedRoadsList += '</div>';
+    
+    resultsDiv.innerHTML = table + blockedRoadsList;
+  }
+
+  function resetAll() {
+    // Clear any running race
+    if (raceInterval) clearInterval(raceInterval);
+    updateRaceState('not_started');
+    
+    // Clear blocked edges
+    blockedEdges.clear();
+    updateBlockedCount();
+    
+    // Clear disaster effects
+    clearDisaster();
+    
+    // Reset algorithm selection
+    currentSelectedAlgorithm = null;
+    document.querySelectorAll('#algorithm-legend .legend-item').forEach(item => {
+      item.classList.remove('active');
+    });
+    
+    // Reset road styles
+    roadLayers.forEach(road => {
+      road.layer.setStyle({
+        color: '#888888',
+        weight: 2,
+        className: 'road-line'
+      });
+    });
+    
+    // Clear paths and markers
+    clearPaths();
+    
+    // Clear results display
+    document.getElementById('results').innerHTML = `
+      <div class="text-center text-gray-500 my-10">
+        <p class="mb-4">Set your start and end nodes, configure disasters, and click "Start Race" to begin</p>
+        <div class="text-sm text-gray-400">
+          <p>• Use Block Mode to manually block roads</p>
+          <p>• Fire disasters are limited to 2-3 blocked edges for containment</p>
+          <p>• End nodes remain reachable with 1-2 minute delays in fire disasters</p>
+          <p>• Compare performance across different pathfinding algorithms</p>
+        </div>
+      </div>`;
+    
+    // Reset blocking mode toggle
+    document.getElementById('blocking-toggle').checked = true;
+    isBlockingMode = true;
+  }
+
+  // Initialize when page loads
+  window.onload = function() {
+    initMap();
+    initAlgorithmLegend();
+  };
+  </script>
+</body>
+</html>
